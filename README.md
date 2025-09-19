@@ -25,7 +25,6 @@ batch-yt-downloader/
 └── downloads/        # MP3 files appear here
 ```
 
-> ⚠️ `cookies.txt` is no longer required if you use Brave/Chromium with `--cookies-from-browser brave:Default`.
 
 ---
 
