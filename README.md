@@ -1,6 +1,7 @@
 # YouTube Liked Videos Downloader
 
-A simple Bash script that uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to **mirror your YouTube "Liked Videos" playlist** into local **MP3 files** with thumbnails and metadata.
+A Bash script that uses [yt-dlp] to **mirror your YouTube "Liked Videos" playlist** into local **MP3 files** with thumbnails and metadata.  
+Built for **personal use** on Linux Mint/Ubuntu, and tested with Brave cookies.
 
 ---
 
@@ -8,9 +9,10 @@ A simple Bash script that uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to **m
 - Downloads audio-only (highest quality) as **MP3**  
 - Embeds YouTube thumbnails as cover art  
 - Adds title/metadata tags  
-- Skips already downloaded songs (uses an archive file)  
+- Skips already downloaded songs (via `archive.txt`)  
 - Uses your YouTube cookies for private playlist access  
-- Works on Linux Mint / Ubuntu and similar distros  
+- Handles retries & SABR streaming quirks with multiple passes  
+- Logs all failed downloads into `failed.txt` for later retry  
 
 ---
 
@@ -18,17 +20,19 @@ A simple Bash script that uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to **m
 ```
 batch-yt-downloader/
 ├── liked-dl.sh       # main script
-├── cookies.txt       # exported YouTube cookies (not tracked in git)
 ├── archive.txt       # keeps track of already-downloaded videos
-└── downloads/        # MP3 files will appear here
+├── failed.txt        # logs errors (video IDs/messages for retry)
+└── downloads/        # MP3 files appear here
 ```
+
+> ⚠️ `cookies.txt` is no longer required if you use Brave/Chromium with `--cookies-from-browser brave:Default`.
 
 ---
 
 ## Requirements
 
 - **yt-dlp** (latest version recommended)  
-  Install either via pipx or binary:
+  Install binary to avoid old repo versions:
   ```bash
   sudo apt remove yt-dlp -y   # remove old package
   sudo wget -O /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
@@ -40,18 +44,8 @@ batch-yt-downloader/
   sudo apt install ffmpeg
   ```
 
-- A YouTube account with liked videos.
-
----
-
-## Authentication (cookies.txt)
-
-Because the "Liked videos" playlist is private, you need to export your YouTube login cookies:
-
-1. Install the [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension in Chromium/Chrome (or [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/) in Firefox).  
-2. Log into [youtube.com](https://youtube.com).  
-3. Export cookies and save them as `cookies.txt` in this repo’s folder.  
-4. Refresh this file whenever downloads fail due to expired cookies.
+- **Brave browser** with an active YouTube login (cookies pulled automatically).  
+  Works with Chrome/Chromium/Firefox too (replace `brave:Default` in script).
 
 ---
 
@@ -67,30 +61,43 @@ Because the "Liked videos" playlist is private, you need to export your YouTube 
    ./liked-dl.sh
    ```
 
-3. New MP3s will appear inside `downloads/`.
+3. New MP3s appear inside `downloads/`.  
+   - Successful IDs go into `archive.txt`.  
+   - Failed items are logged into `failed.txt`.  
 
 ---
 
 ## Script Details
 
-- **Script path config:**
-  - `OUTDIR` → where MP3s are saved  
-  - `COOKIES` → path to cookies file  
-  - `ARCHIVE` → list of already downloaded video IDs  
-- **yt-dlp options used:**
+- **Two-pass download strategy**  
+  - **Pass 1**: Web client (with cookies, stable for Liked playlist).  
+  - **Pass 2**: Default client retry (catches stubborn edge cases).  
+
+- **Error logging**  
+  - Any failed downloads are written to `failed.txt`.  
+  - You can re-run only failed IDs later:
+    ```bash
+    yt-dlp -a failed.txt ...
+    ```
+
+- **yt-dlp options used**:
   - `--extract-audio --audio-format mp3 --audio-quality 0` → highest quality MP3  
   - `--embed-thumbnail --add-metadata` → embed cover art + tags  
   - `--download-archive archive.txt` → skip duplicates  
-  - `--ignore-errors` → continue if some videos are private/deleted  
+  - `--ignore-errors` → keep going if some fail  
+  - `--concurrent-fragments 2` → faster HLS downloads  
+  - `--force-ipv4` → avoids flaky IPv6 routes  
 
 ---
 
 ## Roadmap / Ideas
-- [ ] Add cron job to auto-sync daily  
-- [ ] Support other playlists, not just "Liked videos"  
-- [ ] Optional FLAC/OGG export  
+- [ ] Auto-sync daily via cron  
+- [ ] Support arbitrary playlists (not just Liked)  
+- [ ] Configurable audio formats (FLAC/OGG/AAC)  
+- [ ] Smarter failed.txt (video IDs only)  
 
 ---
 
 ## ⚠️ Disclaimer
-Downloading YouTube content may violate YouTube’s Terms of Service. This script is provided for **personal use only**. Please respect copyright and artists’ work.
+Downloading YouTube content may violate YouTube’s Terms of Service.  
+This script is provided for **personal use only**. Please respect copyright and artists’ work.
