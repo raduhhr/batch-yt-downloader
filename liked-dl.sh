@@ -1,44 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$HOME/Desktop/batch-yt-downloader"
-OUTDIR="$ROOT/downloads"
-ARCHIVE="$ROOT/archive.txt"
-FAILED="$ROOT/failed.txt"
-PLAYLIST_URL="https://www.youtube.com/playlist?list=LL"
+# =====================================================================
+# YouTube Music Downloader – Clean filenames, playlist subfolders
+# =====================================================================
 
-# sanity check
-command -v ffmpeg >/dev/null || { echo "!! ffmpeg not found. sudo apt install ffmpeg"; exit 1; }
-mkdir -p "$OUTDIR"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$SCRIPT_DIR}"
 
-# clear old fail list
-: > "$FAILED"
+OUTDIR="${OUTDIR:-$ROOT/downloads}"
+ARCHIVE="${ARCHIVE:-$ROOT/archive.txt}"
+LOG_DIR="${LOG_DIR:-$ROOT/logs}"
 
-COMMON=(
-  --download-archive "$ARCHIVE"
-  --ignore-errors --no-abort-on-error
-  --match-filter "duration < 14400"
-  -f "bestaudio/best"
-  --extract-audio --audio-format mp3 --audio-quality 0
-  --embed-thumbnail --add-metadata
-  --retries 10 --fragment-retries 10 --retry-sleep 2
-  --concurrent-fragments 2
-  --force-ipv4
-  -o "$OUTDIR/%(title)s.%(ext)s"
-  "$PLAYLIST_URL"
-)
+BROWSER_PROFILE="${BROWSER_PROFILE:-Default}"
+MAX_DURATION="${MAX_DURATION:-14400}"
+CONCURRENT_FRAGMENTS="${CONCURRENT_FRAGMENTS:-3}"
 
-echo "[pass 1] Web client (with cookies, main run)…"
-yt-dlp --cookies-from-browser brave:Default \
-       --extractor-args "youtube:player_client=web" \
-       "${COMMON[@]}" \
-       2>&1 | tee >(grep "ERROR:" >> "$FAILED") || true
+DEFAULT_URL="${PLAYLIST_URL:-https://www.youtube.com/playlist?list=LL}"
 
-echo "[pass 2] Default client retry (only for items not done yet)…"
-yt-dlp --cookies-from-browser brave:Default \
-       --extractor-args "" \
-       "${COMMON[@]}" \
-       2>&1 | tee >(grep "ERROR:" >> "$FAILED") || true
+# Interactive URL prompt
+if [[ $# -ge 1 ]]; then
+    PLAYLIST_URL="$1"
+else
+    if [[ -t 0 ]]; then
+        read -p "Enter playlist/video URL [default: Liked videos]: " USER_URL
+        PLAYLIST_URL="${USER_URL:-$DEFAULT_URL}"
+    else
+        PLAYLIST_URL="$DEFAULT_URL"
+    fi
+fi
 
-echo "✅ Done. Archive prevents dupes."
-echo "⚠️ Failed items logged to: $FAILED"
+mkdir -p "$OUTDIR" "$LOG_DIR"
+touch "$ARCHIVE"
+
+TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
+LOG_FILE="$LOG_DIR/run-$TIMESTAMP.log"
+
+log() { echo "[$(date +'%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+
+# Dependency check
+for cmd in yt-dlp ffmpeg; do
+    command -v "$cmd" >/dev/null || { echo "Error: $cmd not installed"; exit 1; }
+done
+
+log "Downloading from: $PLAYLIST_URL"
+log "Output: $OUTDIR"
+log ""
+
+yt-dlp \
+    --cookies-from-browser "brave:${BROWSER_PROFILE}" \
+    --download-archive "$ARCHIVE" \
+    --ignore-errors \
+    --no-abort-on-error \
+    --retries 5 \
+    --fragment-retries 5 \
+    --concurrent-fragments "$CONCURRENT_FRAGMENTS" \
+    --match-filter "duration < ${MAX_DURATION}" \
+    --remote-components ejs:npm \
+    --progress \
+    --newline \
+    -f "bestaudio/best" \
+    --extract-audio \
+    --audio-format mp3 \
+    --audio-quality 0 \
+    --embed-thumbnail \
+    --add-metadata \
+    -o "$OUTDIR/%(playlist_title|Misc)s/%(title).200B.%(ext)s" \
+    "$PLAYLIST_URL" 2>&1 | tee -a "$LOG_FILE"
+
+log "Done. Log: $LOG_FILE"
